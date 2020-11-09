@@ -548,20 +548,28 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			throws BeanCreationException {
 
 		// Instantiate the bean.
+		// BeanWrapper ，包含了真正的bean对象和bean的class，以及PropertyDescriptor集合
 		BeanWrapper instanceWrapper = null;
+		// 单例的情况下尝试从factoryBeanInstanceCache获取 instanceWrapper
 		if (mbd.isSingleton()) {
 			instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
 		}
+		// 如果没有则需要自己创建
 		if (instanceWrapper == null) {
+			/**
+			 * @see #createBeanInstance
+			 */
 			instanceWrapper = createBeanInstance(beanName, mbd, args);
 		}
 		Object bean = instanceWrapper.getWrappedInstance();
 		Class<?> beanType = instanceWrapper.getWrappedClass();
+		// 如果不是NullBean，则将resolvedTargetType 属性设置为当前的 WrappedClass
 		if (beanType != NullBean.class) {
 			mbd.resolvedTargetType = beanType;
 		}
 
 		// Allow post-processors to modify the merged bean definition.
+		// 这边主要是寻找几个meta，@PostConstruct,@Autowire,@Value,@Resource，@PreDestory等
 		synchronized (mbd.postProcessingLock) {
 			if (!mbd.postProcessed) {
 				try {
@@ -577,6 +585,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 		// Eagerly cache singletons to be able to resolve circular references
 		// even when triggered by lifecycle interfaces like BeanFactoryAware.
+		// 如果当前bean是单例，且支持循环依赖，且当前bean正在创建，通过往singletonFactories添加一个objectFactory，
+		// 这样后期如果有其他bean依赖该bean 可以从singletonFactories获取到bean，
+		// getEarlyBeanReference可以对返回的bean进行修改，这边目前除了可能会返回动态代理对象 其他的都是直接返回bean
 		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
 				isSingletonCurrentlyInCreation(beanName));
 		if (earlySingletonExposure) {
@@ -590,7 +601,9 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		// Initialize the bean instance.
 		Object exposedObject = bean;
 		try {
+			// 填充bean的属性
 			populateBean(beanName, mbd, instanceWrapper);
+			// 初始化bean
 			exposedObject = initializeBean(beanName, exposedObject, mbd);
 		}
 		catch (Throwable ex) {
@@ -603,12 +616,18 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 			}
 		}
 
+		// 如果earlySingletonExposure，尝试从缓存获取该bean（
+		// 一般存放在singletonFactories对象通过调用getObject 把对象存入earlySingletonObjects
+		// ），分别从singletonObjects和earlySingletonObjects获取对象
 		if (earlySingletonExposure) {
 			Object earlySingletonReference = getSingleton(beanName, false);
+			// 如果获取到对象了
 			if (earlySingletonReference != null) {
+				// 当exposedObject （初始化之后的bean等于原始的bean，说明不是proxy），则把缓存中的bean赋值给exposedObject
 				if (exposedObject == bean) {
 					exposedObject = earlySingletonReference;
 				}
+				// 检测该bean的dependon的bean是否都已经初始化好了
 				else if (!this.allowRawInjectionDespiteWrapping && hasDependentBean(beanName)) {
 					String[] dependentBeans = getDependentBeans(beanName);
 					Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
@@ -631,6 +650,7 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 		}
 
 		// Register bean as disposable.
+		// 注册DisposableBean
 		try {
 			registerDisposableBeanIfNecessary(beanName, bean, mbd);
 		}
